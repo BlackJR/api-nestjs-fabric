@@ -100,7 +100,7 @@ export class DiplomaService {
         await this.fabricService.invokeLedger(
             orgId,
             'mychannel',
-            'basic',               // Notre chaincode deployé sur mychannel s'appelle toujours "basic"
+            'basic:DiplomaContract',
             'CreateDiploma',
             payload.id,
             payload.studentName,

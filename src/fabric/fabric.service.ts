@@ -272,7 +272,12 @@ export class FabricService implements OnModuleInit, OnModuleDestroy {
                 `Organisation "${orgId}" non connectée. Vérifiez les certificats et le peer.`,
             );
         }
-        return conn.gateway.getNetwork(channelName).getContract(chaincodeName);
+        const network = conn.gateway.getNetwork(channelName);
+        if (chaincodeName.includes(':')) {
+            const [cc, contract] = chaincodeName.split(':');
+            return network.getContract(cc, contract);
+        }
+        return network.getContract(chaincodeName);
     }
 
     private decode(resultBytes: Uint8Array): unknown {

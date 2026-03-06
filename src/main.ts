@@ -1,8 +1,15 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
+import helmet from 'helmet';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  // Sécurité des Header HTTP
+  app.use(helmet());
+
+  // CORS strict en production, ouvert pour le développement mobile/Svelte
+  app.enableCors({ origin: '*' });
 
   // 1. Récupère le port via la variable d'environnement 'PORT' (injectée par Cloud Run)
   // Si elle n'existe pas (en local), on utilise le port 3000 par défaut.

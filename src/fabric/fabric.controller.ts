@@ -33,10 +33,10 @@ export class FabricController {
      * Returns connection status for all 3 orgs.
      */
     @Get('health')
-    getHealth() {
+    async getHealth() {
         return {
             status: 'ok',
-            orgs: this.fabricService.getHealthStatus(),
+            orgs: await this.fabricService.getHealthStatus(),
             timestamp: new Date().toISOString(),
         };
     }

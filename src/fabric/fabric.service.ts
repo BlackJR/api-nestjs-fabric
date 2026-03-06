@@ -39,14 +39,22 @@ export class FabricService implements OnModuleInit, OnModuleDestroy {
     private readonly logger = new Logger(FabricService.name);
     private readonly connections = new Map<string, OrgConnection>();
     private networkBasePath: string;
+    private appMode: 'GATEWAY' | 'WORKER';
+    private tunnelUrl: string;
 
     constructor(private readonly config: ConfigService) { }
 
     async onModuleInit(): Promise<void> {
-        this.networkBasePath = this.config.getOrThrow<string>(
-            'FABRIC_NETWORK_PATH',
-        );
+        this.appMode = this.config.get<'GATEWAY' | 'WORKER'>('APP_MODE') || 'WORKER';
+        this.tunnelUrl = this.config.get<string>('FABRIC_TUNNEL_URL', '');
 
+        if (this.appMode === 'GATEWAY') {
+            this.logger.warn(`☁️ Mode GATEWAY (Cloud Run) activé. Les requêtes seront relayées vers le tunnel : ${this.tunnelUrl}`);
+            return;
+        }
+
+        this.logger.log('🖥️ Mode WORKER (Lenovo) activé. Connexion locale à Hyperledger Fabric via gRPC.');
+        this.networkBasePath = this.config.getOrThrow<string>('FABRIC_NETWORK_PATH');
         const orgIds = ['org1', 'org2', 'org3'];
 
         for (const orgId of orgIds) {
@@ -62,6 +70,8 @@ export class FabricService implements OnModuleInit, OnModuleDestroy {
     }
 
     async onModuleDestroy(): Promise<void> {
+        if (this.appMode === 'GATEWAY') return;
+
         for (const [orgId, conn] of this.connections) {
             try {
                 conn.gateway.close();
@@ -79,7 +89,7 @@ export class FabricService implements OnModuleInit, OnModuleDestroy {
     // ─── Public API ──────────────────────────────────────────────
 
     /**
-     * Query the ledger (read-only, evaluateTransaction).
+     * Query the ledger (read-only)
      */
     async queryLedger(
         orgId: string,
@@ -88,6 +98,10 @@ export class FabricService implements OnModuleInit, OnModuleDestroy {
         functionName: string,
         ...args: string[]
     ): Promise<unknown> {
+        if (this.appMode === 'GATEWAY') {
+            return this.proxyRequest('GET', '/ledger/query', { org: orgId, channel: channelName, chaincode: chaincodeName, fn: functionName, args: args.join(',') });
+        }
+
         const contract = this.getContract(orgId, channelName, chaincodeName);
         const resultBytes = await contract.evaluateTransaction(
             functionName,
@@ -97,7 +111,7 @@ export class FabricService implements OnModuleInit, OnModuleDestroy {
     }
 
     /**
-     * Submit a transaction to the ledger (write, submitTransaction).
+     * Submit a transaction to the ledger (write)
      */
     async invokeLedger(
         orgId: string,
@@ -106,6 +120,10 @@ export class FabricService implements OnModuleInit, OnModuleDestroy {
         functionName: string,
         ...args: string[]
     ): Promise<unknown> {
+        if (this.appMode === 'GATEWAY') {
+            return this.proxyRequest('POST', '/ledger/invoke', { org: orgId, channel: channelName, chaincode: chaincodeName, function: functionName, args });
+        }
+
         const contract = this.getContract(orgId, channelName, chaincodeName);
         const resultBytes = await contract.submitTransaction(
             functionName,
@@ -115,9 +133,46 @@ export class FabricService implements OnModuleInit, OnModuleDestroy {
     }
 
     /**
+     * Helper HTTP Proxy pour Cloud Run
+     */
+    private async proxyRequest(method: string, endpoint: string, payload: any): Promise<unknown> {
+        const url = new URL(`${this.tunnelUrl}${endpoint}`);
+        let init: RequestInit = { method, headers: { 'Content-Type': 'application/json' } };
+
+        if (method === 'GET') {
+            Object.keys(payload).forEach(key => payload[key] && url.searchParams.append(key, payload[key]));
+        } else {
+            init.body = JSON.stringify(payload);
+        }
+
+        this.logger.log(`🌐 [PROXY] Relay Request to Lenovo: ${method} ${url.toString()}`);
+        const response = await fetch(url.toString(), init);
+
+        if (!response.ok) {
+            const errBody = await response.text();
+            throw new Error(`Worker Error (${response.status}): ${errBody}`);
+        }
+        const data = await response.json();
+        return data.data; // Le FabricController renvoie { status: 'success', data: ... }
+    }
+
+    /**
      * Returns health status for all connected orgs.
      */
-    getHealthStatus(): Record<string, boolean> {
+    async getHealthStatus(): Promise<Record<string, boolean>> {
+        if (this.appMode === 'GATEWAY') {
+            try {
+                const response = await fetch(`${this.tunnelUrl}/ledger/health`);
+                if (response.ok) {
+                    const data = await response.json();
+                    return data.orgs || { "worker_available": true };
+                }
+                return { "worker_available": false };
+            } catch {
+                return { "worker_available": false };
+            }
+        }
+
         const status: Record<string, boolean> = {};
         for (const orgId of ['org1', 'org2', 'org3']) {
             status[orgId] = this.connections.has(orgId);

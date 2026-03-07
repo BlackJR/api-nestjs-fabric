@@ -11,7 +11,10 @@ async function bootstrap() {
   // CORS strict en production, ouvert pour le développement mobile/Svelte
   app.enableCors({ origin: '*' });
 
-  // 1. Récupère le port via la variable d'environnement 'PORT' (injectée par Cloud Run)
+  // 1. Gérer le Graceful Shutdown (exigé par Cloud Run pour SIGTERM)
+  app.enableShutdownHooks();
+
+  // 2. Récupère le port via la variable d'environnement 'PORT' (injectée par Cloud Run)
   // Si elle n'existe pas (en local), on utilise le port 3000 par défaut.
   const port = process.env.PORT || 3000;
 

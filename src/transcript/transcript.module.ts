@@ -1,11 +1,12 @@
 import { Module } from '@nestjs/common';
-import { TranscriptService } from './transcript.service';
 import { TranscriptController } from './transcript.controller';
-import { FabricModule } from '../fabric/fabric.module';
+import { TranscriptService } from './transcript.service';
+import { FireFlyModule } from '../firefly/firefly.module'; // Changement vers FireFly
 
 @Module({
-    imports: [FabricModule],
+    imports: [FireFlyModule],
     controllers: [TranscriptController],
     providers: [TranscriptService],
+    exports: [TranscriptService]
 })
 export class TranscriptModule { }

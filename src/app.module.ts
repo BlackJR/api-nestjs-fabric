@@ -2,9 +2,10 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { FabricModule } from './fabric/fabric.module';
+import { FireFlyModule } from './firefly/firefly.module';
 import { DiplomaModule } from './diploma/diploma.module';
 import { TranscriptModule } from './transcript/transcript.module';
+import { EventsModule } from './events/events.module';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { ApiKeyThrottlerGuard } from './security/api-key.guard';
@@ -13,12 +14,13 @@ import { ApiKeyThrottlerGuard } from './security/api-key.guard';
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     ThrottlerModule.forRoot([{
-      ttl: 60000, // Durée en millisecondes (1 minute)
-      limit: 20, // 20 requêtes par minute par IP maximum
+      ttl: 60000,
+      limit: 20,
     }]),
-    FabricModule,
+    FireFlyModule,
     DiplomaModule,
     TranscriptModule,
+    EventsModule,
   ],
   controllers: [AppController],
   providers: [

@@ -57,4 +57,20 @@ export class TranscriptController {
             res.status(HttpStatus.INTERNAL_SERVER_ERROR).send('Erreur lors de la génération du PDF');
         }
     }
+
+    @Post('update')
+    async updateTranscript(@Body() dto: IssueTranscriptDto) {
+        if (!dto.org || !dto.id || !dto.studentId || !dto.schoolName || !dto.grades) {
+            throw new HttpException('Paramètres manquants.', HttpStatus.BAD_REQUEST);
+        }
+
+        try {
+            return await this.transcriptService.updateTranscript(dto);
+        } catch (error: any) {
+            throw new HttpException(
+                { status: 'error', message: error.message },
+                HttpStatus.INTERNAL_SERVER_ERROR,
+            );
+        }
+    }
 }

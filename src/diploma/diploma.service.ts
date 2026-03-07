@@ -1,10 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { FabricService } from '../fabric/fabric.service';
 import { Storage } from '@google-cloud/storage';
 import * as QRCode from 'qrcode';
 import * as crypto from 'crypto';
 import PDFDocument = require('pdfkit');
 import { Buffer } from 'buffer';
+import { FireFlyService } from '../firefly/firefly.service';
 
 const BUCKET_NAME = 'diploma-exemple';
 
@@ -13,7 +13,7 @@ export class DiplomaService {
     private readonly logger = new Logger(DiplomaService.name);
     private readonly storage = new Storage();
 
-    constructor(private readonly fabricService: FabricService) { }
+    constructor(private readonly fireflyService: FireFlyService) { }
 
     /**
      * Génère le PDF en mémoire avec PDFKit, et retourne le Buffer et son Hash SHA-256
@@ -74,12 +74,13 @@ export class DiplomaService {
             },
         });
 
-        // URL publique de Google Cloud Storage
-        return `https://storage.googleapis.com/${BUCKET_NAME}/${id}.pdf`;
+        // URL publique de Google Cloud Storage chargée de manière plus sécurisée
+        const storageBaseUrl = process.env.GCP_STORAGE_URL || 'https://storage.googleapis.com';
+        return `${storageBaseUrl}/${BUCKET_NAME}/${id}.pdf`;
     }
 
     /**
-     * Orchestre l'émission complète du diplôme : PDF -> GCP -> Fabric
+     * Orchestre l'émission complète du diplôme : PDF -> GCP -> Fabric via FireFly
      */
     async issueDiploma(orgId: string, payload: { id: string; studentName: string; schoolName: string }): Promise<any> {
         this.logger.log(`[1/3] Génération du PDF pour ${payload.studentName}...`);
@@ -90,33 +91,83 @@ export class DiplomaService {
         let fileUrl = '';
         try {
             fileUrl = await this.uploadToGcp(payload.id, pdfBuffer);
-        } catch (error) {
+        } catch (error: any) {
             this.logger.warn(`Impossible d'uploader sur GCP (erreur credentials possibles en local) : ${error.message}`);
             // Pour le dev local, on continue même si l'upload GCP échoue si pas de clés
             fileUrl = `local-mode-no-gcp-upload/${payload.id}.pdf`;
         }
 
-        this.logger.log(`[3/3] Inscription du Hash sur la Blockchain via ${orgId}...`);
-        await this.fabricService.invokeLedger(
-            orgId,
-            'mychannel',
-            'basic:DiplomaContract',
-            'CreateDiploma',
+        this.logger.log(`[3/3] Inscription sur la Blockchain via FireFly...`);
+        // On map les champs du diplôme vers le smart contract "asset-transfer-basic" standard
+        // => 2. Enregistrement asynchrone sur la blockchain via FireFly
+        const currentDate = new Date().toISOString();
+        const fireflyResponse = await this.fireflyService.createDocument(
             payload.id,
+            'DIPLOMA',
             payload.studentName,
-            payload.schoolName,
             hash,
-            date
+            'Org1MSP', // Par défaut
+            currentDate
         );
 
         return {
-            status: 'success',
-            message: 'Diplôme certifié et enregistré avec succès.',
-            data: {
-                id: payload.id,
-                hash: hash,
-                url: fileUrl,
-            }
+            message: 'Diplôme généré et soumis à la blockchain (FireFly)',
+            diplomaId: payload.id,
+            documentHash: hash,
+            publicUrl: fileUrl,
+            fireflyTxId: fireflyResponse.id,
+        };
+    }
+
+    async revokeDiploma(id: string) {
+        this.logger.log(`Demande de révocation pour le document ${id}`);
+        // 1. Demande asynchrone Firestore
+        const fireflyResponse = await this.fireflyService.revokeDocument(id);
+
+        return {
+            message: 'Requête de révocation envoyée à la blockchain.',
+            fireflyTxId: fireflyResponse.id
+        }
+    }
+
+    async replaceDiploma(payload: { oldId: string, newId: string, studentName: string, schoolName: string }) {
+        this.logger.log(`Demande de remplacement de ${payload.oldId} par ${payload.newId}`);
+        // 1. Génération du nouveau PDF 
+        const { pdfBuffer, hash } = await this.generateDiplomaPdf({
+            id: payload.newId,
+            studentName: payload.studentName,
+            schoolName: payload.schoolName,
+            date: new Date().toISOString().split('T')[0] // Utilise la date d'aujourd'hui
+        });
+
+        // 2. Upload vers Google Cloud Storage
+        let fileUrl = '';
+        try {
+            fileUrl = await this.uploadToGcp(`diploma-${payload.newId}.pdf`, pdfBuffer);
+            this.logger.log(`Nouveau PDF de reemplécement uploadé sur GCP: ${fileUrl}`);
+        } catch (error) {
+            this.logger.warn(`L'upload GCP a échoué (mode dev ?). On continue le process blockchain.`);
+            fileUrl = `local-mode-no-gcp-upload/diploma-${payload.newId}.pdf`;
+        }
+
+        // 3. Appel blockchain asynchrone
+        const currentDate = new Date().toISOString();
+        const fireflyResponse = await this.fireflyService.replaceDocument(
+            payload.oldId,
+            payload.newId,
+            'DIPLOMA',
+            payload.studentName,
+            hash,
+            'Org1MSP', // Issuer par défaut
+            currentDate
+        );
+
+        return {
+            message: 'Diplôme de remplacement soumis à la blockchain.',
+            newDiplomaId: payload.newId,
+            newDocumentHash: hash,
+            publicUrl: fileUrl,
+            fireflyTxId: fireflyResponse.id
         };
     }
 }

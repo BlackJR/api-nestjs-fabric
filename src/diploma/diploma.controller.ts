@@ -47,8 +47,39 @@ export class DiplomaController {
             res.setHeader('Content-Type', 'application/pdf');
             res.setHeader('Content-Disposition', `inline; filename="diploma-${id}.pdf"`);
             res.send(pdfBuffer);
-        } catch (error) {
+        } catch (error: any) {
             res.status(HttpStatus.INTERNAL_SERVER_ERROR).send('Erreur lors de la génération du PDF');
+        }
+    }
+
+    @Post('revoke')
+    async revokeDiploma(@Body() dto: { id: string }) {
+        if (!dto.id) {
+            throw new HttpException('Paramètre manquant: id', HttpStatus.BAD_REQUEST);
+        }
+        try {
+            return await this.diplomaService.revokeDiploma(dto.id);
+        } catch (error: any) {
+            throw new HttpException(
+                { status: 'error', message: error.message },
+                HttpStatus.INTERNAL_SERVER_ERROR,
+            );
+        }
+    }
+
+    @Post('replace')
+    async replaceDiploma(@Body() dto: { oldId: string, newId: string, studentName: string, schoolName: string }) {
+        if (!dto.oldId || !dto.newId || !dto.studentName || !dto.schoolName) {
+            throw new HttpException('Paramètres manquants (oldId, newId, studentName, schoolName).', HttpStatus.BAD_REQUEST);
+        }
+
+        try {
+            return await this.diplomaService.replaceDiploma(dto);
+        } catch (error: any) {
+            throw new HttpException(
+                { status: 'error', message: error.message },
+                HttpStatus.INTERNAL_SERVER_ERROR,
+            );
         }
     }
 }

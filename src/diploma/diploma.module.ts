@@ -1,11 +1,12 @@
 import { Module } from '@nestjs/common';
-import { DiplomaService } from './diploma.service';
 import { DiplomaController } from './diploma.controller';
-import { FabricModule } from '../fabric/fabric.module';
+import { DiplomaService } from './diploma.service';
+import { FireFlyModule } from '../firefly/firefly.module'; // Import du nouveau module HTTP FireFly
 
 @Module({
-    imports: [FabricModule],
+    imports: [FireFlyModule], // Remplacement de l'ancien module
     controllers: [DiplomaController],
     providers: [DiplomaService],
+    exports: [DiplomaService]
 })
 export class DiplomaModule { }

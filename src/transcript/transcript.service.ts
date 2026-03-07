@@ -1,10 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { FabricService } from '../fabric/fabric.service';
 import { Storage } from '@google-cloud/storage';
 import * as QRCode from 'qrcode';
 import * as crypto from 'crypto';
 import PDFDocument = require('pdfkit');
 import { Buffer } from 'buffer';
+import { FireFlyService } from '../firefly/firefly.service';
 
 const BUCKET_NAME = 'diploma-exemple';
 
@@ -18,7 +18,7 @@ export class TranscriptService {
     private readonly logger = new Logger(TranscriptService.name);
     private readonly storage = new Storage();
 
-    constructor(private readonly fabricService: FabricService) { }
+    constructor(private readonly fireflyService: FireFlyService) { }
 
     /**
      * Génère le PDF de Bulletin de Notes en mémoire et calcule son Hash
@@ -87,7 +87,8 @@ export class TranscriptService {
             },
         });
 
-        return `https://storage.googleapis.com/${BUCKET_NAME}/transcript-${id}.pdf`;
+        const storageBaseUrl = process.env.GCP_STORAGE_URL || 'https://storage.googleapis.com';
+        return `${storageBaseUrl}/${BUCKET_NAME}/transcript-${id}.pdf`;
     }
 
     async issueTranscript(orgId: string, payload: { id: string; studentId: string; schoolName: string; grades: Grade[] }): Promise<any> {
@@ -105,33 +106,63 @@ export class TranscriptService {
         let fileUrl = '';
         try {
             fileUrl = await this.uploadToGcp(payload.id, pdfBuffer);
-        } catch (error) {
+        } catch (error: any) {
             this.logger.warn(`Impossible d'uploader sur GCP en local : ${error.message}`);
             fileUrl = `local-mode-no-gcp-upload/transcript-${payload.id}.pdf`;
         }
 
-        this.logger.log(`[3/3] Inscription du Hash via ${orgId}...`);
-        await this.fabricService.invokeLedger(
-            orgId,
-            'mychannel',
-            'basic:TranscriptContract',
-            'CreateTranscript',
+        this.logger.log(`[3/3] Inscription sur la Blockchain via FireFly...`);
+        // => 2. Enregistrement asynchrone sur la blockchain via FireFly
+        const currentDate = new Date().toISOString();
+        const fireflyResponse = await this.fireflyService.createDocument(
             payload.id,
+            'TRANSCRIPT',
             payload.studentId,
-            average.toString(),
             hash,
-            date
+            'Org1MSP', // Par défaut
+            currentDate
         );
 
         return {
-            status: 'success',
-            message: 'Bulletin certifié et enregistré avec succès.',
-            data: {
-                id: payload.id,
-                average: average,
-                hash: hash,
-                url: fileUrl,
-            }
+            message: 'Bulletin généré et soumis à la blockchain (FireFly)',
+            transcriptId: payload.id,
+            documentHash: hash,
+            publicUrl: fileUrl,
+            fireflyTxId: fireflyResponse.id,
+        };
+    }
+
+    async updateTranscript(payload: any) {
+        this.logger.log(`[1/3] Demande de requalification de notes pour le bulletin ${payload.id}...`);
+
+        let total = 0;
+        for (const grade of payload.grades) {
+            total += grade.score;
+        }
+        const average = total / payload.grades.length;
+
+        // => 1. Regénère le PDF avec les nouvelles notes (Historisation)
+        const { pdfBuffer, hash } = await this.generateTranscriptPdf({ ...payload, average });
+
+        let fileUrl = '';
+        try {
+            fileUrl = await this.uploadToGcp(`transcript-${payload.id}-v2.pdf`, pdfBuffer);
+        } catch (error) {
+            this.logger.warn(`L'upload GCP a échoué (mode dev ?).`);
+            fileUrl = `local-mode-no-gcp-upload/transcript-${payload.id}-v2.pdf`;
+        }
+
+        this.logger.log(`[2/3] Soumission de la mise à jour sur le World State...`);
+        // => 2. On Update seulement le hash pour tracer le changement dans Firefly
+        const fireflyResponse = await this.fireflyService.updateDocumentHash(payload.id, hash);
+
+        return {
+            message: 'Bulletin recalculé et mis à jour sur la blockchain.',
+            transcriptId: payload.id,
+            newHash: hash,
+            newAverage: average,
+            publicUrl: fileUrl,
+            fireflyTxId: fireflyResponse.id,
         };
     }
 }

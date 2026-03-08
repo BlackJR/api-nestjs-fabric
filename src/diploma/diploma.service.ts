@@ -101,13 +101,12 @@ export class DiplomaService {
         // On map les champs du diplôme vers le smart contract "asset-transfer-basic" standard
         // => 2. Enregistrement asynchrone sur la blockchain via FireFly
         const currentDate = new Date().toISOString();
-        const fireflyResponse = await this.fireflyService.createDocument(
+        const fireflyResponse = await this.fireflyService.createDiploma(
             payload.id,
-            'DIPLOMA',
             payload.studentName,
+            payload.schoolName,
             hash,
-            'Org1MSP', // Par défaut
-            currentDate
+            date
         );
 
         return {

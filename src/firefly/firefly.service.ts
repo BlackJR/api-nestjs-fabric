@@ -43,16 +43,15 @@ export class FireFlyService {
 
 
     /**
-     * Crée un nouveau document (Diplôme ou Bulletin) actif (Version 1)
+     * Crée un nouveau diplôme
      */
-    async createDocument(id: string, documentType: string, studentName: string, documentHash: string, issuerId: string, issueDate: string) {
-        return this.sendInvoke('CreateDocument', {
+    async createDiploma(id: string, studentName: string, school: string, pdfHash: string, date: string) {
+        return this.sendInvoke('CreateDiploma', {
             id,
-            documentType,
             studentName,
-            documentHash,
-            issuerId,
-            issueDate
+            school,
+            pdfHash,
+            date
         });
     }
 

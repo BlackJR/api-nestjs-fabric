@@ -101,7 +101,7 @@ export class FireFlyService {
     async getAllDiplomas() {
         try {
             this.logger.log(`Interrogation du registre Fabric pour tous les diplômes...`);
-            return await this.sendQuery('GetAllAssets', {});
+            return await this.sendQuery('GetAllDocuments', {});
         } catch (error: any) {
             this.logger.error(`Erreur de lecture FireFly: ${error.message}`);
             return [];

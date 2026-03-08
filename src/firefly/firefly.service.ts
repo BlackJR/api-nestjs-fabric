@@ -94,4 +94,17 @@ export class FireFlyService {
     async readDocument(id: string) {
         return this.sendQuery('ReadDocument', { id });
     }
+
+    /**
+     * Récupère la liste de tous les diplômes depuis la blockchain (Lecture seule)
+     */
+    async getAllDiplomas() {
+        try {
+            this.logger.log(`Interrogation du registre Fabric pour tous les diplômes...`);
+            return await this.sendQuery('GetAllAssets', {});
+        } catch (error: any) {
+            this.logger.error(`Erreur de lecture FireFly: ${error.message}`);
+            return [];
+        }
+    }
 }

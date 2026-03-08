@@ -1,4 +1,4 @@
-import { Controller, Post, Body, HttpException, HttpStatus, Logger, Get, Param, Res } from '@nestjs/common';
+import { Controller, Post, Body, HttpException, HttpStatus, Logger, Get, Param, Res, Headers, UnauthorizedException } from '@nestjs/common';
 import { DiplomaService } from './diploma.service';
 import type { Response } from 'express';
 
@@ -14,6 +14,16 @@ export class DiplomaController {
     private readonly logger = new Logger(DiplomaController.name);
 
     constructor(private readonly diplomaService: DiplomaService) { }
+
+    @Get()
+    async findAll(@Headers('x-api-key') apiKey: string) {
+        const validApiKey = process.env.API_KEY || 'default-secret-change-me-in-prod';
+        if (apiKey !== validApiKey) {
+            throw new UnauthorizedException('Clé API invalide');
+        }
+
+        return this.diplomaService.getAllDiplomas();
+    }
 
     @Post('issue')
     async issueDiploma(@Body() dto: IssueDiplomaDto) {

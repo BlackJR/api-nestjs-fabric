@@ -170,4 +170,8 @@ export class DiplomaService {
             fireflyTxId: fireflyResponse.id
         };
     }
+
+    async getAllDiplomas() {
+        return this.fireflyService.getAllDiplomas();
+    }
 }
